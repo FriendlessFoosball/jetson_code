@@ -33,7 +33,7 @@ def get_trackbar_values(range_filter):
 def main():
     range_filter = 'HSV'
 
-    camera = VideoStream(src="nvarguscamerasrc ! video/x-raw(memory:NVMM), "\
+    camera = VideoStream(src="nvarguscamerasrc wbmode=4 aelock=true gainrange=\"8 8\" ispdigitalgainrange=\"1 1\" exposuretimerange=\"5000000 5000000\" ! video/x-raw(memory:NVMM), "\
                          "width=(int)1280, height=(int)720, format=(string)NV12, " \
                          "framerate=(fraction)50/1 ! nvvidconv flip-method=2 ! video/x-raw, " \
                          "format=(string)BGRx ! videoconvert ! video/x-raw, " \
