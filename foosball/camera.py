@@ -5,18 +5,21 @@ import time
 
 from imutils.video import VideoStream
 
-def camera_ps(shutdown, outfd, hwm):
+def camera_ps(shutdown, outfd, hwm, on_jetson):
     context = zmq.Context()
 
     socket = context.socket(zmq.PUB)
     socket.setsockopt(zmq.SNDHWM, hwm)
     socket.bind(outfd)
 
-    camera = VideoStream(src="nvarguscamerasrc ! video/x-raw(memory:NVMM), "\
-                         "width=(int)1280, height=(int)720, format=(string)NV12, " \
-                         "framerate=(fraction)50/1 ! nvvidconv flip-method=2 ! video/x-raw, " \
-                         "format=(string)BGRx ! videoconvert ! video/x-raw, " \
-                         "format=(string)BGR ! appsink").start()
+    if on_jetson:
+        camera = VideoStream(src="nvarguscamerasrc ! video/x-raw(memory:NVMM), "\
+                            "width=(int)1280, height=(int)720, format=(string)NV12, " \
+                            "framerate=(fraction)50/1 ! nvvidconv flip-method=2 ! video/x-raw, " \
+                            "format=(string)BGRx ! videoconvert ! video/x-raw, " \
+                            "format=(string)BGR ! appsink").start()
+    else:
+        camera = VideoStream(0)
     time.sleep(2.0)
 
     frame = 0
@@ -40,7 +43,7 @@ def camera_ps(shutdown, outfd, hwm):
 class Camera:
     hwm = 10
 
-    def __init__(self, endpoint, framerate=50):
+    def __init__(self, endpoint, framerate=50, is_jetson=True):
         self.outfd = endpoint
         self.shutdown = mp.Event()
         self.psargs = (self.shutdown, self.outfd, self.hwm)
