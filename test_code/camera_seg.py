@@ -174,18 +174,20 @@ while True:
     rg_ang = find_angle(rg_l, rg_r, True)
     #print(f"Goalie angle: {find_angle(rg_l, rg_r, True)}")
     cv2.putText(objpic, "{:.1f}".format(rg_ang), (415, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+    #print(f"Goalie z: {rg_loc}")
 
     objpic = vis_player(rg_loc, rg_l, rg_r, 375, objpic)
 
     ro_loc = get_player_pos(robot[:, 125:250])
     ro_l, ro_r = get_player_bounds(robot[:, 125:250])
     ro_ang = find_angle(ro_l, ro_r, False)
+    #print(f"Offense z: {ro_loc}")
 
     objpic = vis_player(ro_loc, ro_l, ro_r, 125, objpic)
     #print(f"Offense angle: {find_angle(ro_l, ro_r, False)}")
     cv2.putText(objpic, "{:.1f}".format(ro_ang), (165, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
 
-    cv2.imshow("Tracks", imutils.resize(objpic, height=900))
+    cv2.imshow("Tracks", objpic)
 
     if cv2.waitKey(1) & 0xFF is ord('q'):
         break

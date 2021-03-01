@@ -4,20 +4,11 @@ import cv2
 import time
 import imutils
 
-from collections import deque
 from imutils.video import VideoStream
+from foosball.perception_utils import *
+from foosball.angle_finder import find_angle
 
-class FPSCounter:
-    def __init__(self):
-        self.q = deque(maxlen=100)
-
-    def frame(self):
-        self.q.append(time.time())
-
-    def fps(self):
-        return len(self.q)/(self.q[-1] - self.q[0])
-
-def camera_ps(shutdown, outfd, hwm, framerate, on_jetson):
+def camera_ps(shutdown, outfd, hwm, config, on_jetson):
     context = zmq.Context()
 
     socket = context.socket(zmq.PUB)
@@ -25,9 +16,9 @@ def camera_ps(shutdown, outfd, hwm, framerate, on_jetson):
     socket.bind(outfd)
 
     if on_jetson:
-        camera = VideoStream(src="nvarguscamerasrc ! video/x-raw(memory:NVMM), "\
+        camera = VideoStream(src="nvarguscamerasrc wbmode=4 aelock=true gainrange=\"8 8\" ispdigitalgainrange=\"1 1\" exposuretimerange=\"5000000 5000000\" ! video/x-raw(memory:NVMM), "\
                             "width=(int)1280, height=(int)720, format=(string)NV12, " \
-                            "framerate=(fraction)50/1 ! nvvidconv flip-method=2 ! video/x-raw, " \
+                            "framerate=(fraction)40/1 ! nvvidconv flip-method=2 ! video/x-raw, " \
                             "format=(string)BGRx ! videoconvert ! video/x-raw, " \
                             "format=(string)BGR ! appsink").start()
     else:
@@ -35,25 +26,102 @@ def camera_ps(shutdown, outfd, hwm, framerate, on_jetson):
     time.sleep(2.0)
 
     frame = 0
-    fpsc = FPSCounter()
-    fpsc.frame()
+    mask = get_mask(config['ROI'])
+    filt = get_filt()
+    vm = VelocityMonitor()
+    roi = config['ROI']
+    bt = config['BALL_THRESH']
+    rt = config['ROBOT_THRESH']
+    ht = config['HUMAN_THRESH']
 
     while not shutdown.is_set():
-        fpsc.frame()
+        # Fetch and crop frame
         image = camera.read()
+        image = crop_image(image, mask)
         image = imutils.resize(image, width=500)
 
-        image = cv2.GaussianBlur(image, (11, 11), 0)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        # Preprocess frame for perception
+        hsv = cv2.GaussianBlur(image, (11, 11), 0)
+        hsv = cv2.cvtColor(hsv, cv2.COLOR_BGR2HSV)
 
-        # undistort and do four-point transform/crop
+        # Threshold frame
+        ball = cv2.inRange(hsv, *bt)
+        robot = cv2.inRange(hsv, *rt)
+        human = cv2.inRange(hsv, *ht)
 
-        snd = [image.tobytes(), bytes(str(frame), 'utf-8')]
-        print(f"Sending frame {frame}")
-        print(f"FPS: {fpsc.fps()}")
+        # Postprocess thresholds
+        human = cv2.erode(human, None, iterations=2)
+        human = human / 255
+        robot = robot / 255
 
+        # Track ball
         try:
-            socket.send_multipart(snd, flags=zmq.NOBLOCK)
+            ballx, bally = track_ball(ball)
+            vm.pos(ballx, bally)
+        except ValueError:
+            ballx, bally = -1., -1.
+            vm.clear()
+
+        ballxv, ballyv = vm.velocity()
+        ballxv /= config['PIXELS_PER_CM']
+        ballyv /= config['PIXELS_PER_CM']
+
+        # Track human player
+        hg_roi = human[:, 0:125]
+        hg_loc = get_player_pos(hg_roi, filt)
+        hg_l, hg_r = get_player_bounds(hg_roi)
+        hg_ang = -find_angle(*mirror_player(hg_l, hg_r, *config['GOALIE_PARAMS']), True)
+
+        ho_roi = human[:, 250:375]
+        ho_loc = get_player_pos(ho_roi, filt)
+        ho_l, ho_r = get_player_bounds(ho_roi)
+        ho_ang = -find_angle(*mirror_player(ho_l, ho_r, *config['OFFENSE_PARAMS']), False)
+
+        # Track robot player
+        rg_roi = robot[:, 375:500]
+        rg_loc = get_player_pos(rg_roi, filt)
+        rg_l, rg_r = get_player_bounds(rg_roi)
+        rg_ang = find_angle(rg_l, rg_r, True)
+
+        ro_roi = robot[:, 125:250]
+        ro_loc = get_player_pos(ro_roi, filt)
+        ro_l, ro_r = get_player_bounds(ro_roi)
+        ro_ang = find_angle(ro_l, ro_r, False)
+
+        # Compile track object
+        tracks = {
+            'frame': frame,
+            'ball': {
+                'x': ballx,
+                'y': bally,
+                'xv': ballxv,
+                'yv': ballyv
+            },
+            'human': {
+                'goalie': {
+                    'loc': hg_loc,
+                    'ang': hg_ang
+                },
+                'offense': {
+                    'loc': ho_loc,
+                    'ang': ho_ang
+                }
+            },
+            'robot': {
+                'goalie': {
+                    'loc': rg_loc,
+                    'ang': rg_ang
+                },
+                'offense': {
+                    'loc': ro_loc,
+                    'ang': ro_ang
+                }
+            }
+        }
+
+        #print(f"Sending frame {frame}")
+        try:
+            socket.send_pyobj(tracks, flags=zmq.NOBLOCK)
         except zmq.error.Again:
             print("hwm hit!")
 
@@ -62,10 +130,10 @@ def camera_ps(shutdown, outfd, hwm, framerate, on_jetson):
 class Camera:
     hwm = 10
 
-    def __init__(self, endpoint, framerate=50, is_jetson=True):
+    def __init__(self, endpoint, config, is_jetson=True):
         self.outfd = endpoint
         self.shutdown = mp.Event()
-        self.psargs = (self.shutdown, self.outfd, self.hwm, framerate, is_jetson)
+        self.psargs = (self.shutdown, self.outfd, self.hwm, config, is_jetson)
         self.ps = None
 
     def start(self):
