@@ -2,6 +2,7 @@ import zmq
 import cv2
 import time
 import threading
+import numpy as np
 
 context = zmq.Context()
 
@@ -27,8 +28,8 @@ def recv(shutdown):
             break
 
         if socket in socks:
-            item = socket.recv_pyobj()
-            print(f"Received frame {item['id']}")
+            item = socket.recv_multipart()
+            print(f"Received frame {item[1]}")
             frame = item
 
         if rep_socket in socks:
@@ -68,7 +69,7 @@ if __name__ == '__main__':
             time.sleep(0.001)
             continue
 
-        cv2.imshow("Stream", item['image'])
+        cv2.imshow("Stream", np.frombuffer(item[0]))
 
         if cv2.waitKey(1) & 0xFF is ord('q'):
             break
