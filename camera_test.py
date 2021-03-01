@@ -8,7 +8,7 @@ context = zmq.Context()
 def recv(shutdown):
     socket = context.socket(zmq.SUB)
     socket.setsockopt(zmq.RCVHWM, 10)
-    socket.connect('tcp://foosball.wifi.local.cmu.edu:5558')
+    socket.connect('ipc://camera')
     socket.subscribe('')
 
     rep_socket = context.socket(zmq.REP)
