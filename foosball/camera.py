@@ -4,7 +4,18 @@ import cv2
 import time
 import imutils
 
+from collections import deque
 from imutils.video import VideoStream
+
+class FPSCounter:
+    def __init__(self):
+        self.q = deque(maxlen=100)
+
+    def frame(self):
+        self.q.append(time.time())
+
+    def fps(self):
+        return len(self.q)/(self.q[-1] - self.q[0])
 
 def camera_ps(shutdown, outfd, hwm, framerate, on_jetson):
     context = zmq.Context()
@@ -24,8 +35,11 @@ def camera_ps(shutdown, outfd, hwm, framerate, on_jetson):
     time.sleep(2.0)
 
     frame = 0
+    fpsc = FPSCounter()
+    fpsc.frame()
 
     while not shutdown.is_set():
+        fpsc.frame()
         image = camera.read()
         image = imutils.resize(image, width=500)
 
@@ -36,6 +50,7 @@ def camera_ps(shutdown, outfd, hwm, framerate, on_jetson):
 
         snd = [image.tobytes(), bytes(str(frame), 'utf-8')]
         print(f"Sending frame {frame}")
+        print(f"FPS: {fpsc.fps()}")
 
         try:
             socket.send_multipart(snd, flags=zmq.NOBLOCK)

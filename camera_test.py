@@ -14,7 +14,7 @@ def recv(shutdown):
 
     rep_socket = context.socket(zmq.REP)
     rep_socket.bind('inproc://cache')
-    
+
     poller = zmq.Poller()
     poller.register(socket, zmq.POLLIN)
     poller.register(rep_socket, zmq.POLLIN)
@@ -69,10 +69,15 @@ if __name__ == '__main__':
             time.sleep(0.001)
             continue
 
-        cv2.imshow("Stream", np.frombuffer(item[0]))
+        frame = np.frombuffer(item[0], dtype='uint8').reshape((281, 500, 3))
+        #cv2.inRange(frame, (0, 0, 0), (255, 255, 255))
+        #frame = cv2.erode(frame, None, iterations=2)
+        #frame = cv2.dilate(frame, None, iterations=2)
+
+        cv2.imshow("Stream", frame)
 
         if cv2.waitKey(1) & 0xFF is ord('q'):
             break
-    
+
     shutdown.set()
     thread.join()

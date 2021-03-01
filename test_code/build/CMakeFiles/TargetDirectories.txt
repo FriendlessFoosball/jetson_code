@@ -1,0 +1,3 @@
+/home/edwardli/jetson_code/test_code/build/CMakeFiles/rebuild_cache.dir
+/home/edwardli/jetson_code/test_code/build/CMakeFiles/opencv_test.dir
+/home/edwardli/jetson_code/test_code/build/CMakeFiles/edit_cache.dir
