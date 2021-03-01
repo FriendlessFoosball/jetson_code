@@ -6,7 +6,7 @@ import imutils
 
 from imutils.video import VideoStream
 
-def camera_ps(shutdown, outfd, hwm, on_jetson):
+def camera_ps(shutdown, outfd, hwm, framerate, on_jetson):
     context = zmq.Context()
 
     socket = context.socket(zmq.PUB)
@@ -20,7 +20,7 @@ def camera_ps(shutdown, outfd, hwm, on_jetson):
                             "format=(string)BGRx ! videoconvert ! video/x-raw, " \
                             "format=(string)BGR ! appsink").start()
     else:
-        camera = VideoStream(0)
+        camera = VideoStream('unity_5.mkv')
     time.sleep(2.0)
 
     frame = 0
@@ -32,7 +32,10 @@ def camera_ps(shutdown, outfd, hwm, on_jetson):
         image = cv2.GaussianBlur(image, (11, 11), 0)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
+        # undistort and do four-point transform/crop
+
         snd = {'image': image, 'id': frame}
+        print(f"Sending frame {frame}")
 
         try:
             socket.send_pyobj(snd, flags=zmq.NOBLOCK)
@@ -47,7 +50,7 @@ class Camera:
     def __init__(self, endpoint, framerate=50, is_jetson=True):
         self.outfd = endpoint
         self.shutdown = mp.Event()
-        self.psargs = (self.shutdown, self.outfd, self.hwm)
+        self.psargs = (self.shutdown, self.outfd, self.hwm, framerate, is_jetson)
         self.ps = None
 
     def start(self):
