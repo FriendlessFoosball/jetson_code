@@ -18,7 +18,7 @@ def convertToInt(bytes):
         value = value - 2**16
     return value
 
-def serial_recv(endpoint):
+def serial_recv(endpoint, sendpoint):
     ser = serial.Serial()
     ser.timeout = 1
     ser.baudrate = 1843200
@@ -27,8 +27,12 @@ def serial_recv(endpoint):
     context = zmq.Context()
     socket = context.socket(zmq.SUB)
     socket.setsockopt(zmq.RCVHWM, 10)
-    socket.bind('tcp://localhost:5558')
+    # socket.bind('tcp://localhost:5558')
+    socket.bind(endpoint)
     socket.subscribe('')
+
+    socket2 = context.socket(zmq.PUB)
+    socket.bind(sendpoint)
 
     command = {
         "move_zero": 0,
@@ -86,7 +90,9 @@ def serial_recv(endpoint):
             motor_positions = []
             for i in range(0, len(info), 2):
                 motor_positions.append(convertToInt(info[i:i+2]))
-            # TODO: Send motor_positions to main jetson processing
+            # Send motor_positions to main jetson processing
+            socket2.send("%s" % ",".join([str(x) for x in motor_positions]))
+            time.sleep(0.0001)
 
 class SerialInterface:
     hwm = 10
