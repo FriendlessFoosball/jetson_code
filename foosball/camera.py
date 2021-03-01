@@ -34,11 +34,11 @@ def camera_ps(shutdown, outfd, hwm, framerate, on_jetson):
 
         # undistort and do four-point transform/crop
 
-        snd = {'image': image, 'id': frame}
+        snd = [image.tobytes(), bytes(str(frame), 'utf-8')]
         print(f"Sending frame {frame}")
 
         try:
-            socket.send_pyobj(snd, flags=zmq.NOBLOCK)
+            socket.send_multipart(snd, flags=zmq.NOBLOCK)
         except zmq.error.Again:
             print("hwm hit!")
 

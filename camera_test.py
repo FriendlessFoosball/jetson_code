@@ -1,53 +1,78 @@
-import asyncio
 import zmq
 import cv2
-from zmq.asyncio import Context
 import time
+import threading
+import numpy as np
 
-context = Context.instance()
-frame = None
+context = zmq.Context()
 
-async def recv():
-    global frame
-
+def recv(shutdown):
     socket = context.socket(zmq.SUB)
     socket.setsockopt(zmq.RCVHWM, 10)
-    socket.connect('tcp://localhost:5558')
+    socket.connect('ipc://camera')
     socket.subscribe('')
 
-    while True:
-        item = await socket.recv_pyobj()
-        print(f"Received frame {item['id']}")
-        frame = item['image']
+    rep_socket = context.socket(zmq.REP)
+    rep_socket.bind('inproc://cache')
+    
+    poller = zmq.Poller()
+    poller.register(socket, zmq.POLLIN)
+    poller.register(rep_socket, zmq.POLLIN)
 
-async def show_frame():
-    global frame
+    frame = None
 
-    while True:
-        if frame is not None:
-            #cv2.imshow("Stream", frame)
-            print(frame)
-            frame = None
-        #await asyncio.sleep(1)
+    while not shutdown.is_set():
+        try:
+            socks = dict(poller.poll())
+        except KeyboardInterrupt:
+            break
 
-async def main():
-    await asyncio.gather(recv(), show_frame())
+        if socket in socks:
+            item = socket.recv_multipart()
+            print(f"Received frame {item[1]}")
+            frame = item
 
-asyncio.run(main())
+        if rep_socket in socks:
+            msg = rep_socket.recv()
+            rep_socket.send_pyobj(frame)
 
-# if __name__ == '__main__':
-#     context = Context.instance()
-
-#     socket = context.socket(zmq.SUB)
-#     socket.setsockopt(zmq.RCVHWM, 10)
-#     socket.connect('tcp://localhost:5558')
-#     socket.subscribe('')
+# async def show_frame():
+#     global frame
 
 #     while True:
-#         item = socket.recv_pyobj()
-#         print(f"Received frame {item['id']}")
+#         if frame is not None:
+#             #cv2.imshow("Stream", frame)
+#             print(frame)
+#             frame = None
+#         #await asyncio.sleep(1)
 
-#         cv2.imshow("Stream", item['image'])
+# async def main():
+#     await asyncio.gather(recv(), show_frame())
 
-#         if cv2.waitKey(1) & 0xFF is ord('q'):
-#             break
+# asyncio.run(main())
+
+if __name__ == '__main__':
+    shutdown = threading.Event()
+    args = (shutdown, )
+    thread = threading.Thread(target=recv, args=args, daemon=True)
+    thread.start()
+
+    req_socket = context.socket(zmq.REQ)
+    req_socket.connect('inproc://cache')
+
+    while True:
+        req_socket.send(b'hi!')
+
+        item = req_socket.recv_pyobj()
+
+        if item is None:
+            time.sleep(0.001)
+            continue
+
+        cv2.imshow("Stream", np.frombuffer(item[0]))
+
+        if cv2.waitKey(1) & 0xFF is ord('q'):
+            break
+    
+    shutdown.set()
+    thread.join()
