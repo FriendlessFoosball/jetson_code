@@ -30,19 +30,19 @@ dst = np.array([
 
 M = cv2.getPerspectiveTransform(rect, dst)
 
-# map_x = np.zeros((720, 1280), dtype='float64')
-# max_y = np.zeros((720, 1280), dtype='float64')
+map_x = np.zeros((720, 1280), dtype='float64')
+max_y = np.zeros((720, 1280), dtype='float64')
 
-# for y in range(720):
-#     for x in range(1280):
-#         w = M[2,0]*x + M[2,1] * y + M[2,2]
-#         w = 1. / w if w != 0. else 0.
+for y in range(720):
+    for x in range(1280):
+        w = M[2,0]*x + M[2,1] * y + M[2,2]
+        w = 1. / w if w != 0. else 0.
 
-#         new_x = (M[0,0]*x + M[0,1]*y + M[0,2]) * w
-#         new_y = (M[1,0]*x + M[1,1]*y + M[1,2]) * w
+        new_x = (M[0,0]*x + M[0,1]*y + M[0,2]) * w
+        new_y = (M[1,0]*x + M[1,1]*y + M[1,2]) * w
 
-#         map_x[y, x] = new_x
-#         map_y[y, x] = new_y
+        map_x[y, x] = new_x
+        map_y[y, x] = new_y
 
 # print(map_x.tobytes())
 # print(map_y.tobytes())
