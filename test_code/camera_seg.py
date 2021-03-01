@@ -85,6 +85,8 @@ while True:
     image = image[79:662, 198:1004]
     image = imutils.resize(image, width=500)
 
+    print(image.shape)
+
     #cv2.imshow("Camera", image)
     objpic = image
 

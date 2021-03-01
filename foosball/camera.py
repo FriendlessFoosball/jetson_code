@@ -119,7 +119,7 @@ def camera_ps(shutdown, outfd, hwm, config, on_jetson):
             }
         }
 
-        #print(f"Sending frame {frame}")
+        print(f"Sending frame {frame}")
         try:
             socket.send_pyobj(tracks, flags=zmq.NOBLOCK)
         except zmq.error.Again:

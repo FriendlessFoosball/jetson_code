@@ -100,8 +100,9 @@ def find_angle(l, r, isGoalie):
         min_diff = 360
         angle = None
 
-        # print(l_sols)
-        # print(r_sols)
+        if not isGoalie:
+            print(l_sols)
+            print(r_sols)
 
         for la, ra in itertools.product(l_sols, r_sols):
             if dist(la, ra) < min_diff:
@@ -109,7 +110,10 @@ def find_angle(l, r, isGoalie):
                 min_diff = dist(la, ra)
 
         if min_diff > 30:
-            return r_sols[0]
+            if len(l_sols) > 1:
+                angle = l_sols[0]
+            else:
+                angle = r_sols[0]
 
         MEMO[(l, r, isGoalie)] = angle
 

@@ -106,7 +106,10 @@ def find_angle(l, r, isGoalie):
                 min_diff = dist(la, ra)
 
         if min_diff > 30:
-            return r_sols[0]
+            if len(l_sols) > 1:
+                angle = l_sols[0]
+            else:
+                angle = r_sols[0
 
         MEMO[(l, r, isGoalie)] = angle
 
