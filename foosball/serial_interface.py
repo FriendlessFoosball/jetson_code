@@ -4,9 +4,21 @@ import time
 import serial
 
 def convertToBytes(value):
+    # Returns a list of 2 bytes in little endian format
+    # Just truncates the value - assumes that value fits inside a short
+    little = [value & (0xFF), (value >> 8) & 0xFF]
+    return [hex(b) for b in little]
+
+def convertToInt(bytes):
+    # Return signed int from array of little endian bytes
+    lower = int(bytes[0], 16)
+    upper = int(bytes[1], 16) << 8
+    value = upper | lower
+    if ((value >> 15) & 0x1 == 1):
+        value = value - 2**16
     return value
 
-def serial_recv(endpoint):
+def serial_recv(endpoint, sendpoint):
     ser = serial.Serial()
     ser.timeout = 1
     ser.baudrate = 1843200
@@ -15,8 +27,12 @@ def serial_recv(endpoint):
     context = zmq.Context()
     socket = context.socket(zmq.SUB)
     socket.setsockopt(zmq.RCVHWM, 10)
-    socket.bind('tcp://localhost:5558')
+    # socket.bind('tcp://localhost:5558')
+    socket.bind(endpoint)
     socket.subscribe('')
+
+    socket2 = context.socket(zmq.PUB)
+    socket.bind(sendpoint)
 
     command = {
         "move_zero": 0,
@@ -34,14 +50,15 @@ def serial_recv(endpoint):
             Item is structured like dictionary:
                 KEY         VALUE
                 commmand    "move_zero", "set_zero", "set_speed", "set_position", "get_position", "set_all_positions", "set_all_speeds", "get_all_speeds"
-                x_val       value
-                y-val       value
-                z_val       value
-                a_val       value
-            Each motor 
+                x_val       value (int)
+                y-val       value (int)
+                z_val       value (int)
+                a_val       value (int)
+            Each motor must be included if you want to send or receive info for that motor
         """
         item = socket.recv_pyobj()
         comm_num = item["command"]
+        arr = []
         if comm_num < 5:
             val = 0
             motor = 0
@@ -51,12 +68,31 @@ def serial_recv(endpoint):
                     motor = i
             first_byte = comm_num * 4 + motor
             first_byte = first_byte.to_bytes(1, "big")
-            arr = [first_bytes]
+            arr = [first_byte]
             arr.extend(convertToBytes(val))
-            arr.append(0x0A)
-            ser.write(bytearray(arr))
 
+        else:
+            first_byte = comm_num * 4
+            first_byte = first_byte.to_bytes(1, "big")
+            arr = [first_byte]
+            for motor in motors:
+                arr.extend(convertToBytes(item[motors]))
+        arr.append(0x0A)
+        ser.write(bytearray(arr))
 
+        time.sleep(0.0001)
+
+        if comm_num == 4 or comm_num == 7:
+            if comm_num == 4:
+                info = [hex(i) for i in ser.read(2)]
+            else:
+                info = [hex(i) for i in ser.read(8)]
+            motor_positions = []
+            for i in range(0, len(info), 2):
+                motor_positions.append(convertToInt(info[i:i+2]))
+            # Send motor_positions to main jetson processing
+            socket2.send("%s" % ",".join([str(x) for x in motor_positions]))
+            time.sleep(0.0001)
 
 class SerialInterface:
     hwm = 10
@@ -91,3 +127,10 @@ class SerialInterface:
         rpr += f"HWM: {self.hwm}\n"
 
         return rpr
+
+if __name__ == "__main__":
+    for val in [-1600, 1600, -1593, 1929, -2823, 1, 202, 0, -1]:
+        a = convertToBytes(val)
+        print(a)
+        b = convertToInt(a)
+        print(b)
