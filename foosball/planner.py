@@ -1,7 +1,7 @@
 import zmq
 import multiprocessing as mp
 import onnxruntime as ort
-import numpy as numpy
+import numpy as np
 
 # 361 x 500
 BALL_X_CENTER = 250
@@ -23,14 +23,16 @@ MAX_ANG_VELOCITY = 30
 LIN_MOVE_MULTIPLIER = 2
 ANG_MOVE_MULTIPLIER = 20
 
+PULLEY_DIA = 2.5476
+
 def frame_to_observation(frame, vels, off_ang, goa_ang):
     obs = np.zeros((1, 16), dtype='float32')
 
     # Ball information
     obs[0,0] = -1 * (frame['ball']['x'] - BALL_X_CENTER) / FIELD_LENGTH
     obs[0,1] = (frame['ball']['y'] - BALL_Y_CENTER) / FIELD_WIDTH
-    obs[0,2] = -1 * frame['ball']['vx'] / MAX_BALL_VELOCITY
-    obs[0,3] = frame['ball']['vy'] / MAX_BALL_VELOCITY
+    obs[0,2] = -1 * frame['ball']['xv'] / MAX_BALL_VELOCITY
+    obs[0,3] = frame['ball']['yv'] / MAX_BALL_VELOCITY
 
     # Robot paddle information
     obs[0,4] = max(-1., min(1., (frame['robot']['offense']['loc'] - center_loc) / diff))
@@ -50,7 +52,7 @@ def frame_to_observation(frame, vels, off_ang, goa_ang):
 
     return obs
 
-def planner_ps(shutdown, infd, locfd, timerfd, outfd, inhwm, outhwm, config, model):
+def planner_ps(shutdown, infd, locfd, timerfd, outfd, inhwm, outhwm, model):
     context = zmq.Context()
 
     in_socket = context.socket(zmq.SUB)
@@ -85,7 +87,7 @@ def planner_ps(shutdown, infd, locfd, timerfd, outfd, inhwm, outhwm, config, mod
     # goa_ang_vel = 0
 
     # THESE ARE RELATIVE VELOCITIES!!!!!!!!!!!!
-    vels = np.zeros((4, ), dtype='float32')
+    vel = np.zeros((4, ), dtype='float32')
     curr_move = np.zeros((4, ), dtype='float32')
 
     # POSITIVE MEANS KICKING
@@ -103,14 +105,31 @@ def planner_ps(shutdown, infd, locfd, timerfd, outfd, inhwm, outhwm, config, mod
 
             print(f"Processing frame {frame['frame']}")
 
-            obs = frame_to_observation(frame, vels, off_ang, goa_ang)
-            inference = sess.run(None, {'vector_observation': obs})
-            curr_move = inference[2][0]
+            if frame['robot']['offense']['loc'] >= MAX_AXLE_LOC or frame['robot']['offense']['loc'] <= MIN_AXLE_LOC:
+                vel[0] = 0
+
+            if frame['robot']['goalie']['loc'] >= MAX_AXLE_LOC or frame['robot']['goalie']['loc'] <= MIN_AXLE_LOC:
+                vel[2] = 0
+
+            if frame['ball']['x'] == -1:
+                vel[0:4] = 0
+                curr_move[0:4] = 0
+            else:
+                obs = frame_to_observation(frame, vel, off_ang, goa_ang)
+                inference = sess.run(None, {'vector_observation': obs})
+                curr_move = inference[2][0]
         
         if loc_socket in socks:
-            d
-            # mod between 180/-180
-            # set vel to 0 if hit endstop
+            _, _, ga, oa = loc_socket.recv_pyobj()
+            # RELATIVE ANGLE IS REVERSED!
+            ga *= -(360 / 1600)
+            oa *= -(360 / 1600)
+
+            # mod between -180/180
+            goa_ang = ((ga + 180) % 360) - 180
+            off_ang = ((oa + 180) % 360) - 180
+
+            print(f"Set angles to goalie: {goa_ang}, off: {off_ang}")
 
         if timer_sock in socks:
             _ = timer_sock.recv()
@@ -151,23 +170,43 @@ def planner_ps(shutdown, infd, locfd, timerfd, outfd, inhwm, outhwm, config, mod
 
             vel[3] += goa_ang_move
 
+            # velocities aligned!
+
+            off_lin_spd = int((vel[0] / (PULLEY_DIA / 2)) * (800 / np.pi))
+            goa_lin_spd = int((vel[2] / (PULLEY_DIA / 2)) * (800 / np.pi))
+            off_ang_spd = int(-vel[1] * (800 / np.pi))
+            goa_ang_spd = int(-vel[3] * (800 / np.pi))
+
             try:
-                outfd.send_pyobj( flags=zmq.NOBLOCK)
+                out_socket.send_pyobj({
+                    'command': 'set_all_speeds',
+                    'goalie_lin': goa_lin_spd,
+                    'offense_lin': off_lin_spd,
+                    'goalie_ang': goa_ang_spd,
+                    'offense_ang': off_ang_spd
+                })
             except zmq.error.Again:
                 print("oops")
+
+            try:
+                out_socket.send_pyobj({'command': 'get_all_positions'}, flags=zmq.NOBLOCK)
+            except zmq.error.Again:
+                print("oops")
+
+    out_socket.send_pyobj({'command': 'set_all_speeds', 'goalie_lin': 0, 'offense_lin': 0, 'goalie_ang': 0, 'offense_ang': 0})
                 
 
 class Planner:
     inhwm = 1
     outhwm = 10
 
-    def __init__(self, infd, locfd, timerfd, outfd, config, model):
+    def __init__(self, infd, locfd, timerfd, outfd, model):
         self.infd = infd
         self.outfd = outfd
         self.locfd = locfd
         self.timerfd = timerfd
         self.shutdown = mp.Event()
-        self.psargs = (self.shutdown, self.infd, self.locfd, self.timerfd, self.outfd, self.inhwm, self.outhwm, config, model)
+        self.psargs = (self.shutdown, self.infd, self.locfd, self.timerfd, self.outfd, self.inhwm, self.outhwm, model)
         self.ps = None
 
     def start(self):

@@ -109,7 +109,7 @@ def find_angle(l, r, isGoalie):
             if len(l_sols) > 1:
                 angle = l_sols[0]
             else:
-                angle = r_sols[0
+                angle = r_sols[0]
 
         MEMO[(l, r, isGoalie)] = angle
 
