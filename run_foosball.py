@@ -6,7 +6,7 @@ from tableconfig import config
 if __name__ == '__main__':
     cam = Camera("ipc://tracks", config)
     timer = Timer("ipc://timer")
-    pl = Planner("ipc://tracks", "ipc://pos_ret", "ipc://timer", "ipc://cmds", "models/recurrent-np-timepenalty.onnx")
+    pl = Planner("ipc://tracks", "ipc://pos_ret", "ipc://timer", "ipc://cmds", "models/gmtrain.onnx")
     cont = Controller("ipc://cmds", "ipc://pos_ret")
 
     cam.start()
