@@ -24,6 +24,7 @@ LIN_MOVE_MULTIPLIER = 2
 ANG_MOVE_MULTIPLIER = 20
 
 PULLEY_DIA = 2.5476
+IS_RECURRENT = True
 
 def frame_to_observation(frame, vels, off_ang, goa_ang):
     obs = np.zeros((1, 16), dtype='float32')
@@ -94,6 +95,8 @@ def planner_ps(shutdown, infd, locfd, timerfd, outfd, inhwm, outhwm, model):
     off_ang = 0
     goa_ang = 0
 
+    recurrent_memory = np.zeros((1, 1, 256), dtype='float32')
+
     while not shutdown.is_set():
         try:
             socks = dict(poller.poll())
@@ -114,10 +117,17 @@ def planner_ps(shutdown, infd, locfd, timerfd, outfd, inhwm, outhwm, model):
             if frame['ball']['x'] == -1:
                 vel[0:4] = 0
                 curr_move[0:4] = 0
+                if IS_RECURRENT:
+                    recurrent_memory = np.zeros((1, 1, 256), dtype='float32')
             else:
                 obs = frame_to_observation(frame, vel, off_ang, goa_ang)
-                inference = sess.run(None, {'vector_observation': obs})
+                network_inp = {'vector_observation': obs}
+                if IS_RECURRENT:
+                    network_inp.update({'recurrent_in': recurrent_memory})
+                inference = sess.run(None, network_inp)
                 curr_move = inference[2][0]
+                if IS_RECURRENT:
+                    recurrent_memory = inference[-1]
         
         if loc_socket in socks:
             _, _, ga, oa = loc_socket.recv_pyobj()
