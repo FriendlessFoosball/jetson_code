@@ -9,8 +9,8 @@ from mlagents_envs.base_env import ActionSpec, ObservationSpec, DimensionPropert
 from mlagents.trainers.settings import NetworkSettings, EncoderType
 from mlagents.trainers.torch.networks import SimpleActor
 
-MODEL_FILE = 'models/ar.pt'
-EXPORT_FILE = 'models/ar.onnx'
+MODEL_FILE = 'models/fast.pt'
+EXPORT_FILE = 'models/fast.onnx'
 class SerializableSimpleActor(SimpleActor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
