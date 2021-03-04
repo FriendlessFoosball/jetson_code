@@ -3,7 +3,7 @@ import time
 from foosball import Camera, Timer, Planner, Controller
 from tableconfig import config
 
-if __name__ == '__main__':
+def main():
     cam = Camera("ipc://tracks", config)
     timer = Timer("ipc://timer")
     pl = Planner("ipc://tracks", "ipc://pos_ret", "ipc://timer", "ipc://cmds", "models/gmtrain.onnx")
@@ -25,3 +25,14 @@ if __name__ == '__main__':
     time.sleep(0.5)
 
     cont.stop()
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        pl.stop()
+        timer.stop()
+        cam.stop()
+        time.sleep(0.5)
+
+        cont.stop()
